@@ -23,6 +23,7 @@ type TimeWheel struct {
 	addTaskChannel    chan Task        // 新增任务channel
 	removeTaskChannel chan interface{} // 删除任务channel
 	stopChannel       chan bool        // 停止定时器channel
+	C                 chan interface{} //时间轮通知通道
 }
 
 // Task 延时任务
@@ -34,7 +35,7 @@ type Task struct {
 }
 
 // New 创建时间轮
-func New(interval time.Duration, slotNum int, job Job) *TimeWheel {
+func NewTw(interval time.Duration, slotNum int, job Job) *TimeWheel {
 	if interval <= 0 || slotNum <= 0 || job == nil {
 		return nil
 	}
@@ -48,6 +49,7 @@ func New(interval time.Duration, slotNum int, job Job) *TimeWheel {
 		addTaskChannel:    make(chan Task),
 		removeTaskChannel: make(chan interface{}),
 		stopChannel:       make(chan bool),
+		C:                 make(chan interface{}, 1000),
 	}
 
 	tw.initSlots()
@@ -124,8 +126,12 @@ func (tw *TimeWheel) scanAndRunTask(l *list.List) {
 			e = e.Next()
 			continue
 		}
-
-		go tw.job(task.data)
+		if tw.job != nil {
+			go tw.job(task.data)
+		}
+		if tw.C != nil {
+			tw.C <- task.key
+		}
 		next := e.Next()
 		l.Remove(e)
 		if task.key != nil {

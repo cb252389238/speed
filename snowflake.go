@@ -21,9 +21,7 @@ var (
 
 	// StepBits holds the number of bits to use for Step
 	// Remember, you have a total 22 bits to share between Node/Step
-	StepBits uint8 = 12
-
-	// DEPRECATED: the below four variables will be removed in a future release.
+	StepBits  uint8 = 12
 	mu        sync.Mutex
 	nodeMax   int64 = -1 ^ (-1 << NodeBits)
 	nodeMask        = nodeMax << StepBits
