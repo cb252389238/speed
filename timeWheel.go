@@ -36,7 +36,7 @@ type Task struct {
 
 // New 创建时间轮
 func NewTw(interval time.Duration, slotNum int, job Job) *TimeWheel {
-	if interval <= 0 || slotNum <= 0 || job == nil {
+	if interval <= 0 || slotNum <= 0 {
 		return nil
 	}
 	tw := &TimeWheel{
@@ -77,7 +77,7 @@ func (tw *TimeWheel) Stop() {
 
 // AddTimer 添加定时器 key为定时器唯一标识
 func (tw *TimeWheel) AddTimer(delay time.Duration, key interface{}, data interface{}) {
-	if delay < 0 {
+	if delay <= 0 {
 		return
 	}
 	tw.addTaskChannel <- Task{delay: delay, key: key, data: data}
