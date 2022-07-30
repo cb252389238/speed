@@ -70,3 +70,14 @@ func BenchmarkCache_Set(b *testing.B) {
 		c.Set("key-"+strconv.Itoa(i), i, 0)
 	}
 }
+
+func BenchmarkCacheSetRepeat(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for i := 0; i < b.N; i++ {
+		c.Set("key", i, time.Second*60)
+	}
+}

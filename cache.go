@@ -71,16 +71,22 @@ func (c *cache) Set(k string, v interface{}, d time.Duration) {
 	if d > 0 {
 		endTime = time.Now().Add(d).Unix()
 	}
-	c.mu.Lock()
+	c.mu.RLock()
 	if val, ok := c.items[k]; ok {
 		if val.Expiration > 0 {
+			c.mu.RUnlock()
 			c.timeWheel.RemoveTimer(k)
+		} else {
+			c.mu.RUnlock()
 		}
+	} else {
+		c.mu.RUnlock()
 	}
 	item := Item{
 		Object:     v,
 		Expiration: endTime,
 	}
+	c.mu.Lock()
 	c.items[k] = item
 	c.mu.Unlock()
 	c.timeWheel.AddTimer(d, k, item)

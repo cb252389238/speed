@@ -46,10 +46,10 @@ func NewTw(interval time.Duration, slotNum int, job Job) *TimeWheel {
 		currentPos:        0,
 		job:               job,
 		slotNum:           slotNum,
-		addTaskChannel:    make(chan Task),
-		removeTaskChannel: make(chan interface{}),
+		addTaskChannel:    make(chan Task, 10000),
+		removeTaskChannel: make(chan interface{}, 10000),
 		stopChannel:       make(chan bool),
-		C:                 make(chan interface{}, 1000),
+		C:                 make(chan interface{}, 10000),
 	}
 
 	tw.initSlots()
