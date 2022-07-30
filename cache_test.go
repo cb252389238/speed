@@ -2,6 +2,7 @@ package speed
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -33,4 +34,41 @@ func TestSpeedCache(t *testing.T) {
 	c.Delete("test01")                  //打印 100  触发回调函数
 	c.Set("test02", 200, time.Second*2) //两秒后过期触发回调函数
 	time.Sleep(time.Second * 100)       //阻塞
+}
+
+func BenchmarkCache_SetEx(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for i := 0; i < b.N; i++ {
+		t := time.Now().Unix() % 60
+		c.Set("key-"+strconv.Itoa(i), i, time.Second*time.Duration(t))
+	}
+}
+
+func BenchmarkCache_SetExAndDel(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for i := 0; i < b.N; i++ {
+		t := time.Now().Unix() % 60
+		c.Set("key-"+strconv.Itoa(i), i, time.Second*time.Duration(t))
+	}
+	for i := 0; i < b.N; i++ {
+		c.Delete("key-" + strconv.Itoa(i))
+	}
+}
+func BenchmarkCache_Set(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for i := 0; i < b.N; i++ {
+		c.Set("key-"+strconv.Itoa(i), i, 0)
+	}
 }
