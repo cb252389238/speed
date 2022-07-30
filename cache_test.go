@@ -43,8 +43,7 @@ func BenchmarkCache_SetEx(b *testing.B) {
 		return
 	}
 	for i := 0; i < b.N; i++ {
-		t := time.Now().Unix() % 60
-		c.Set("key-"+strconv.Itoa(i), i, time.Second*time.Duration(t))
+		c.Set("key-"+strconv.Itoa(i), i, time.Second*60)
 	}
 }
 
@@ -55,8 +54,7 @@ func BenchmarkCache_SetExAndDel(b *testing.B) {
 		return
 	}
 	for i := 0; i < b.N; i++ {
-		t := time.Now().Unix() % 60
-		c.Set("key-"+strconv.Itoa(i), i, time.Second*time.Duration(t))
+		c.Set("key-"+strconv.Itoa(i), i, time.Second*60)
 	}
 	for i := 0; i < b.N; i++ {
 		c.Delete("key-" + strconv.Itoa(i))
