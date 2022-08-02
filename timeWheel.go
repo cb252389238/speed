@@ -130,7 +130,7 @@ func (tw *TimeWheel) scanAndRunTask(l *list.List) {
 			go tw.job(task.data)
 		}
 		if tw.C != nil {
-			tw.C <- task.key
+			tw.C <- task.data
 		}
 		next := e.Next()
 		l.Remove(e)
