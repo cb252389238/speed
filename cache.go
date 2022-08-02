@@ -11,7 +11,7 @@ type Cache struct {
 }
 
 type cache struct {
-	items          map[string]Item   //保存条目
+	kvItems        map[string]KVItem //k-v结构
 	mu             sync.RWMutex      //读写锁
 	deleteCallBack func(interface{}) //回调事件  超时或者删除的时候触发回调
 	snowflake      *Node             //雪花算法生成key
@@ -20,9 +20,10 @@ type cache struct {
 	cancel         context.CancelFunc
 }
 
-type Item struct {
-	Object     interface{}
-	Expiration int64
+type KVItem struct {
+	Object     interface{} //存储体
+	Expiration int64       //过期时间
+	CallBack   bool        //是否回调
 }
 
 func New() (*Cache, error) {
@@ -36,7 +37,7 @@ func New() (*Cache, error) {
 	tw.Start()
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	c := &Cache{&cache{
-		items:          map[string]Item{},
+		kvItems:        map[string]KVItem{},
 		deleteCallBack: nil,
 		snowflake:      sf,
 		timeWheel:      tw,
@@ -55,24 +56,30 @@ func (c *cache) run() {
 		case key := <-c.timeWheel.C: //超时队列
 			if k, ok := key.(string); ok {
 				if i, b := c.delete(k); b {
-					c.deleteCallBack(i.Object)
+					c.deleteCallBack(i)
 				}
 			}
 		}
 	}
 }
 
+func (c *cache) BindDeleteCallBackFunc(f func(interface{})) {
+	c.mu.Lock()
+	c.deleteCallBack = f
+	c.mu.Unlock()
+}
+
 func (c *cache) Stop() {
 	c.cancel()
 }
 
-func (c *cache) Set(k string, v interface{}, d time.Duration) {
+func (c *cache) Set(k string, v interface{}, d time.Duration, callBack bool) {
 	var endTime int64
 	if d > 0 {
 		endTime = time.Now().Add(d).Unix()
 	}
 	c.mu.RLock()
-	if val, ok := c.items[k]; ok {
+	if val, ok := c.kvItems[k]; ok {
 		if val.Expiration > 0 {
 			c.mu.RUnlock()
 			c.timeWheel.RemoveTimer(k)
@@ -82,77 +89,100 @@ func (c *cache) Set(k string, v interface{}, d time.Duration) {
 	} else {
 		c.mu.RUnlock()
 	}
-	item := Item{
+	item := KVItem{
 		Object:     v,
 		Expiration: endTime,
+		CallBack:   callBack,
 	}
 	c.mu.Lock()
-	c.items[k] = item
+	c.kvItems[k] = item
 	c.mu.Unlock()
 	c.timeWheel.AddTimer(d, k, item)
 }
 
+func (c *cache) SetNx(k string, v interface{}, d time.Duration, callBack bool) bool {
+	var endTime int64
+	if d > 0 {
+		endTime = time.Now().Add(d).Unix()
+	}
+	c.mu.RLock()
+	_, ok := c.kvItems[k]
+	c.mu.RUnlock()
+	if ok {
+		return false
+	}
+	item := KVItem{
+		Object:     v,
+		Expiration: endTime,
+		CallBack:   callBack,
+	}
+	c.mu.Lock()
+	c.kvItems[k] = item
+	c.mu.Unlock()
+	c.timeWheel.AddTimer(d, k, item)
+	return true
+}
+
 func (c *cache) Get(k string) (interface{}, bool) {
 	c.mu.RLock()
-	item, ok := c.items[k]
+	item, ok := c.kvItems[k]
 	if !ok {
 		c.mu.RUnlock()
 		return nil, false
 	}
+	c.mu.RUnlock()
 	if item.Expiration <= time.Now().Unix() {
 		return nil, false
 	}
-	c.mu.RUnlock()
 	return item.Object, true
 }
 
-func (c *cache) GetAndEx(k string) (interface{}, time.Time, bool) {
+//获取k-v 过期时间
+func (c *cache) GetEx(k string) (interface{}, time.Time, bool) {
 	c.mu.RLock()
-	item, ok := c.items[k]
+	item, ok := c.kvItems[k]
 	if !ok {
 		c.mu.RUnlock()
 		return nil, time.Time{}, false
 	}
+	c.mu.RUnlock()
 	if item.Expiration <= time.Now().Unix() {
 		return nil, time.Time{}, false
 	}
-	c.mu.RUnlock()
 	return item.Object, time.Unix(item.Expiration, 0), true
 }
 
-func (c *cache) Delete(k string) {
+//k-v删除
+func (c *cache) Del(k string) {
 	c.mu.Lock()
 	v, ok := c.delete(k)
 	c.mu.Unlock()
-	c.timeWheel.RemoveTimer(k)
-	if ok {
+	if v.Expiration > 0 {
+		c.timeWheel.RemoveTimer(k)
+	}
+	if ok && v.CallBack {
 		c.deleteCallBack(v.Object)
 	}
 }
 
-func (c *cache) delete(k string) (Item, bool) {
+func (c *cache) delete(k string) (KVItem, bool) {
 	if c.deleteCallBack != nil {
-		if v, ok := c.items[k]; ok {
-			delete(c.items, k)
+		if v, ok := c.kvItems[k]; ok {
+			delete(c.kvItems, k)
 			return v, true
 		}
 	}
-	delete(c.items, k)
-	return Item{}, false
+	delete(c.kvItems, k)
+	return KVItem{}, false
 }
 
-func (c *cache) BindDeleteCallBackFunc(f func(interface{})) {
-	c.mu.Lock()
-	c.deleteCallBack = f
-	c.mu.Unlock()
-}
-
-func (c *cache) Items() map[string]Item {
+//获取k-v所有值
+func (c *cache) Items() map[string]KVItem {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	m := make(map[string]Item, len(c.items))
+	m := make(map[string]KVItem, len(c.kvItems))
 	now := time.Now().Unix()
-	for k, v := range c.items {
+	for k, v := range c.kvItems {
 		if now > v.Expiration {
 			continue
 		}
@@ -161,9 +191,18 @@ func (c *cache) Items() map[string]Item {
 	return m
 }
 
+//获取k-v数量
 func (c *cache) ItemCount() int {
 	c.mu.RLock()
-	n := len(c.items)
+	n := len(c.kvItems)
 	c.mu.RUnlock()
 	return n
+}
+
+//判断k-v值是否存在
+func (c *cache) Exists(k string) bool {
+	c.mu.RLock()
+	_, ok := c.kvItems[k]
+	c.mu.RUnlock()
+	return ok
 }
