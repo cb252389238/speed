@@ -247,7 +247,26 @@ func (c *cache) hashDelete(k string) (HASHItem, bool) {
 	return HASHItem{}, false
 }
 
-func (c *cache) HSet(key, field string, val interface{}, d time.Duration, callBack bool) {
+func (c *cache) HSet(key, field string, val interface{}) {
+	c.hash_mu.RLock()
+	hash, ok := c.hashItems[key]
+	c.hash_mu.RUnlock()
+	if ok {
+		c.hash_mu.Lock()
+		hash.Object[field] = val
+		c.hash_mu.Unlock()
+		return
+	}
+	item := HASHItem{
+		Object: map[string]interface{}{field: val},
+		Key:    key,
+	}
+	c.hash_mu.Lock()
+	c.hashItems[key] = item
+	c.hash_mu.Unlock()
+}
+
+func (c *cache) HSetEx(key string, d time.Duration, callBack bool) bool {
 	var endTime int64
 	if d > 0 {
 		endTime = time.Now().Add(d).Unix()
@@ -260,27 +279,16 @@ func (c *cache) HSet(key, field string, val interface{}, d time.Duration, callBa
 			c.timeWheel.RemoveTimer(key)
 		}
 		c.hash_mu.Lock()
-		hash.Object[field] = val
+		hash.CallBack = callBack
+		hash.Expiration = endTime
 		c.hash_mu.Unlock()
-		return
+		c.timeWheel.AddTimer(d, key, hash)
+		return true
 	}
-	item := HASHItem{
-		Object:     map[string]interface{}{field: val},
-		CallBack:   callBack,
-		Expiration: endTime,
-		Key:        key,
-	}
-	c.hash_mu.Lock()
-	c.hashItems[key] = item
-	c.hash_mu.Unlock()
-	c.timeWheel.AddTimer(d, key, item)
+	return false
 }
 
-func (c *cache) HMSet(key string, data map[string]interface{}, d time.Duration, callBack bool) {
-	var endTime int64
-	if d > 0 {
-		endTime = time.Now().Add(d).Unix()
-	}
+func (c *cache) HMSet(key string, data map[string]interface{}) {
 	if len(data) == 0 {
 		return
 	}
@@ -288,9 +296,6 @@ func (c *cache) HMSet(key string, data map[string]interface{}, d time.Duration, 
 	hash, ok := c.hashItems[key]
 	c.hash_mu.RUnlock()
 	if ok {
-		if hash.Expiration > 0 {
-			c.timeWheel.RemoveTimer(key)
-		}
 		c.hash_mu.Lock()
 		for field, value := range data {
 			hash.Object[field] = value
@@ -299,9 +304,7 @@ func (c *cache) HMSet(key string, data map[string]interface{}, d time.Duration, 
 		return
 	}
 	item := HASHItem{
-		CallBack:   callBack,
-		Expiration: endTime,
-		Key:        key,
+		Key: key,
 	}
 	for field, value := range data {
 		item.Object[field] = value
@@ -309,30 +312,31 @@ func (c *cache) HMSet(key string, data map[string]interface{}, d time.Duration, 
 	c.hash_mu.Lock()
 	c.hashItems[key] = item
 	c.hash_mu.Unlock()
-	c.timeWheel.AddTimer(d, key, item)
 }
 
-func (c *cache) HSetNx(key, field string, val interface{}, d time.Duration, callBack bool) bool {
-	var endTime int64
-	if d > 0 {
-		endTime = time.Now().Add(d).Unix()
+func (c *cache) HSetNx(key, field string, val interface{}) bool {
+	c.hash_mu.RLock()
+	hash, ok := c.hashItems[key]
+	c.hash_mu.RUnlock()
+	if !ok {
+		item := HASHItem{
+			Object: map[string]interface{}{field: val},
+			Key:    key,
+		}
+		c.hash_mu.Lock()
+		c.hashItems[key] = item
+		c.hash_mu.Unlock()
+		return true
 	}
 	c.hash_mu.RLock()
-	_, ok := c.hashItems[key]
+	_, ok = hash.Object[field]
 	c.hash_mu.RUnlock()
 	if ok {
 		return false
 	}
-	item := HASHItem{
-		Object:     map[string]interface{}{field: val},
-		CallBack:   callBack,
-		Expiration: endTime,
-		Key:        key,
-	}
 	c.hash_mu.Lock()
-	c.hashItems[key] = item
+	hash.Object[field] = val
 	c.hash_mu.Unlock()
-	c.timeWheel.AddTimer(d, key, item)
 	return true
 }
 

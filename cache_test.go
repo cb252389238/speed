@@ -7,17 +7,18 @@ import (
 	"time"
 )
 
-func TestSpeedCache(t *testing.T) {
+func TestSpeedKV(t *testing.T) {
 	c, err := New()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	c.Set("key", 1, time.Second*5, false) //设置缓存 0为永不过期
-	fmt.Println(c.Get("key"))             //获取结果 返回1 true
-	fmt.Println(c.GetEx("key"))           //获取结果以及过期时间 1 2022-07-30 14:35:19 +0800 CST true
-	c.Del("key")                          //删除缓存
-	fmt.Println(c.Get("key"))             //<nil> false
+	fmt.Println(c.SetNx("key", 1, 0, false))
+	fmt.Println(c.Get("key"))   //获取结果 返回1 true
+	fmt.Println(c.GetEx("key")) //获取结果以及过期时间 1 2022-07-30 14:35:19 +0800 CST true
+	c.Del("key")                //删除缓存
+	fmt.Println(c.Get("key"))   //<nil> false
 
 	c.Set("key", 1, time.Second*5, false) //设置缓存 5秒后过期
 	time.Sleep(time.Second * 3)           //生命周期还剩两秒
@@ -31,9 +32,42 @@ func TestSpeedCache(t *testing.T) {
 		fmt.Println("触发回调函数")
 	})
 	c.Set("test01", 100, time.Second*3, false)
-	c.Del("test01")                           //打印 100  callBack false 不触发回调函数
+	c.Del("test01")                           //callBack false 不触发回调函数
 	c.Set("test02", 200, time.Second*2, true) //两秒后过期触发回调函数
-	time.Sleep(time.Second * 100)             //阻塞
+	time.Sleep(time.Second * 10)              //阻塞
+}
+
+func TestSpeedHash(t *testing.T) {
+	c, err := New()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	c.BindDeleteCallBackFunc(func(v interface{}) {
+		fmt.Println("触发回调函数")
+	})
+	c.HSet("userinfo", "name", "城邦")
+	c.HSet("userinfo", "age", 30)
+	c.HSet("userinfo", "sex", "男")
+	c.HMSet("userinfo", map[string]interface{}{
+		"aaa": 111,
+		"bbb": 222,
+	})
+	fmt.Println("HSetNX", c.HSetNx("userinfo", "ccc", 30))
+	fmt.Println("HSetNX", c.HSetNx("userinfo", "age", 30))
+	c.HDel("userinfo", "age", "sex")
+	fmt.Println("过期前:", c.HGetAll("userinfo"))
+	c.HSetEx("userinfo", time.Second*1, true)
+	time.Sleep(time.Second * 2)
+	fmt.Println("过期后:", c.HGetAll("userinfo"))
+}
+func TestSpeedSet(t *testing.T) {
+	c, err := New()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(c)
 }
 
 func BenchmarkCache_SetEx(b *testing.B) {
