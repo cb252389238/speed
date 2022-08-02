@@ -15,6 +15,8 @@ type cache struct {
 	kv_mu          sync.RWMutex        //读写锁
 	hashItems      map[string]HASHItem //hash结构
 	hash_mu        sync.RWMutex
+	setItems       map[string]SetItem //集合
+	set_mu         sync.RWMutex
 	deleteCallBack func(interface{}) //回调事件  超时或者删除的时候触发回调
 	snowflake      *Node             //雪花算法生成key
 	timeWheel      *TimeWheel        //时间轮  过期调用
@@ -36,6 +38,17 @@ type HASHItem struct {
 	Key        string
 }
 
+type SetItem struct {
+	Object map[interface{}]Set //存储体
+}
+
+type Set struct {
+	Key        string
+	MemberKey  string
+	Expiration int64 //过期时间
+	CallBack   bool  //是否回调
+}
+
 func New() (*Cache, error) {
 	ip := GetLoaclIp()
 	node := Ipv4StringToInt(ip) % 256
@@ -49,6 +62,7 @@ func New() (*Cache, error) {
 	c := &Cache{&cache{
 		kvItems:        map[string]KVItem{},
 		hashItems:      map[string]HASHItem{},
+		setItems:       map[string]SetItem{},
 		deleteCallBack: nil,
 		snowflake:      sf,
 		timeWheel:      tw,
@@ -76,6 +90,12 @@ func (c *cache) run() {
 				if i, b := c.hashDelete(v.Key); b {
 					if v.CallBack {
 						c.deleteCallBack(i.Object)
+					}
+				}
+			case Set:
+				if i, b := c.setDelete(v.Key, v.MemberKey); b {
+					if v.CallBack {
+						c.deleteCallBack(i)
 					}
 				}
 			}
@@ -410,4 +430,124 @@ func (c *cache) HVAls(key string) []interface{} {
 		res = append(res, val)
 	}
 	return res
+}
+
+func (c *cache) SAdd(key string, d time.Duration, callBack bool, members ...interface{}) {
+	if len(members) == 0 {
+		return
+	}
+	var endTime int64
+	if d > 0 {
+		endTime = time.Now().Add(d).Unix()
+	}
+	c.set_mu.RLock()
+	setItem, ok := c.setItems[key]
+	c.set_mu.RUnlock()
+	if ok {
+		c.set_mu.Lock()
+		for _, member := range members {
+			if val, ok := setItem.Object[member]; ok {
+				if val.Expiration > 0 {
+					c.timeWheel.RemoveTimer(val.Key)
+				}
+			}
+			snowKey := c.snowflake.Generate().String()
+			item := Set{
+				Key:        key,
+				MemberKey:  snowKey,
+				Expiration: endTime,
+				CallBack:   callBack,
+			}
+			setItem.Object[member] = item
+			c.timeWheel.AddTimer(d, snowKey, item)
+		}
+		c.set_mu.Unlock()
+		return
+	}
+	c.set_mu.Lock()
+	object := map[interface{}]Set{}
+	for _, member := range members {
+		snowKey := c.snowflake.Generate().String()
+		item := Set{
+			Key:        key,
+			MemberKey:  snowKey,
+			Expiration: endTime,
+			CallBack:   callBack,
+		}
+		object[member] = item
+		c.timeWheel.AddTimer(d, snowKey, item)
+	}
+	c.setItems[key] = SetItem{Object: object}
+	c.set_mu.Unlock()
+}
+
+func (c *cache) setDelete(key, memberKey string) (Set, bool) {
+	if v, ok := c.setItems[key]; ok {
+		if set, ok := v.Object[memberKey]; ok {
+			delete(v.Object, memberKey)
+			return set, true
+		} else {
+			return Set{}, false
+		}
+	}
+	return Set{}, false
+}
+
+func (c *cache) SCard(key string) int {
+	c.set_mu.RLock()
+	setItem, ok := c.setItems[key]
+	c.set_mu.RUnlock()
+	if !ok {
+		return 0
+	}
+	return len(setItem.Object)
+}
+
+func (c *cache) SRem(key string, members ...interface{}) int {
+	i := 0
+	if len(members) == 0 {
+		return i
+	}
+	c.set_mu.RLock()
+	setItem, ok := c.setItems[key]
+	c.set_mu.RUnlock()
+	if !ok {
+		return i
+	}
+	c.set_mu.Lock()
+	for _, member := range members {
+		if _, ok := setItem.Object[member]; ok {
+			delete(setItem.Object, member)
+			i++
+		}
+	}
+	c.set_mu.Unlock()
+	return i
+}
+
+func (c *cache) SMembers(key string) []interface{} {
+	c.set_mu.RLock()
+	defer c.set_mu.RUnlock()
+	setItem, ok := c.setItems[key]
+	members := make([]interface{}, len(setItem.Object))
+	if !ok {
+		return members
+	}
+	for member, _ := range setItem.Object {
+		members = append(members, member)
+	}
+	return members
+}
+
+func (c *cache) SISMembers(key string, member interface{}) bool {
+	c.set_mu.RLock()
+	defer c.set_mu.RUnlock()
+	setItem, ok := c.setItems[key]
+	if !ok {
+		return false
+	}
+	if _, ok := setItem.Object[member]; ok {
+		return true
+	}
+	return false
 }
