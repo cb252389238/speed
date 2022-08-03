@@ -27,7 +27,7 @@ func TestSpeedKV(t *testing.T) {
 	fmt.Println(c.Get("key"))             //1 true
 
 	//绑定回调函数，当主动删除缓存或者缓存过期触发  v就是设置的缓存值
-	c.BindDeleteCallBackFunc(func(v interface{}) {
+	c.BindDeleteCallBackFunc(func(k string, v interface{}) {
 		fmt.Println(v)
 		fmt.Println("触发回调函数")
 	})
@@ -43,7 +43,7 @@ func TestSpeedHash(t *testing.T) {
 		fmt.Println(err)
 		return
 	}
-	c.BindDeleteCallBackFunc(func(v interface{}) {
+	c.BindDeleteCallBackFunc(func(k string, v interface{}) {
 		fmt.Println("触发回调函数")
 	})
 	c.HSet("userinfo", "name", "城邦")
@@ -73,8 +73,9 @@ func TestSpeedSet(t *testing.T) {
 		fmt.Println(err)
 		return
 	}
-	c.BindDeleteCallBackFunc(func(v interface{}) {
-		fmt.Println("触发回调函数", v)
+	c.BindDeleteCallBackFunc(func(k string, v interface{}) {
+		fmt.Println(v)
+		fmt.Println("触发回调函数")
 	})
 	c.SAdd("1070", time.Second*1, true, 1001, 1002, 1003)
 	c.SAdd("1070", time.Second*10, true, 1001)

@@ -17,9 +17,9 @@ type cache struct {
 	hash_mu        sync.RWMutex
 	setItems       map[string]SetItem //集合
 	set_mu         sync.RWMutex
-	deleteCallBack func(interface{}) //回调事件  超时或者删除的时候触发回调
-	snowflake      *Node             //雪花算法生成key
-	timeWheel      *TimeWheel        //时间轮  过期调用
+	deleteCallBack func(string, interface{}) //回调事件  超时或者删除的时候触发回调
+	snowflake      *Node                     //雪花算法生成key
+	timeWheel      *TimeWheel                //时间轮  过期调用
 	ctx            context.Context
 	cancel         context.CancelFunc
 }
@@ -85,7 +85,7 @@ func (c *cache) run() {
 				c.kv_mu.Lock()
 				if i, b := c.kvDelete(v.Key); b {
 					if v.CallBack {
-						c.deleteCallBack(i.Object)
+						c.deleteCallBack(i.Key, i.Object)
 					}
 				}
 				c.kv_mu.Unlock()
@@ -93,7 +93,7 @@ func (c *cache) run() {
 				c.hash_mu.Lock()
 				if i, b := c.hashDelete(v.Key); b {
 					if v.CallBack {
-						c.deleteCallBack(i.Object)
+						c.deleteCallBack(i.Key, i.Object)
 					}
 				}
 				c.hash_mu.Unlock()
@@ -101,7 +101,7 @@ func (c *cache) run() {
 				c.set_mu.Lock()
 				if i, b := c.setDelete(v.Key, v.Member); b {
 					if v.CallBack {
-						c.deleteCallBack(i.Member)
+						c.deleteCallBack(i.Key, i.Member)
 					}
 				}
 				c.set_mu.Unlock()
@@ -110,7 +110,7 @@ func (c *cache) run() {
 	}
 }
 
-func (c *cache) BindDeleteCallBackFunc(f func(interface{})) {
+func (c *cache) BindDeleteCallBackFunc(f func(string, interface{})) {
 	c.kv_mu.Lock()
 	c.deleteCallBack = f
 	c.kv_mu.Unlock()
@@ -203,7 +203,7 @@ func (c *cache) Del(k string) {
 		c.timeWheel.RemoveTimer(k)
 	}
 	if ok && v.CallBack && c.deleteCallBack != nil {
-		c.deleteCallBack(v.Object)
+		c.deleteCallBack(v.Key, v.Object)
 	}
 }
 
@@ -356,7 +356,7 @@ func (c *cache) HDel(key string, fields ...string) {
 			c.timeWheel.RemoveTimer(key)
 		}
 		if ok && item.CallBack && c.deleteCallBack != nil {
-			c.deleteCallBack(item.Object)
+			c.deleteCallBack(item.Key, item.Object)
 		}
 		return
 	}
