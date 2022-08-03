@@ -66,13 +66,28 @@ func TestSpeedHash(t *testing.T) {
 	time.Sleep(time.Second * 2)
 	fmt.Println("过期后:", c.HGetAll("userinfo"))
 }
+
 func TestSpeedSet(t *testing.T) {
 	c, err := New()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(c)
+	c.BindDeleteCallBackFunc(func(v interface{}) {
+		fmt.Println("触发回调函数")
+	})
+	c.SAdd("1070", time.Second*2, true, 1001, 1002, 1003)
+	//fmt.Println(c.SISMembers("1070", 1001))
+	//fmt.Println(c.SISMembers("1070", 1005))
+	//fmt.Println(c.SCard("1070"))
+	fmt.Println(c.SMembers("1070"))
+	time.Sleep(time.Second * 4)
+	//fmt.Println(c.SISMembers("1070", 1001))
+	fmt.Println(c.SMembers("1070"))
+	c.SAdd("1070", time.Second*3, true, 1008)
+	fmt.Println(c.SMembers("1070"))
+	time.Sleep(time.Second * 10)
+	fmt.Println(c.SMembers("1070"))
 }
 
 func BenchmarkCache_SetEx(b *testing.B) {

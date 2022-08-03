@@ -43,10 +43,11 @@ type SetItem struct {
 }
 
 type Set struct {
-	Key        string
-	MemberKey  string
-	Expiration int64 //过期时间
-	CallBack   bool  //是否回调
+	Key          string
+	timeWheelKey string
+	Member       interface{}
+	Expiration   int64 //过期时间
+	CallBack     bool  //是否回调
 }
 
 func New() (*Cache, error) {
@@ -81,23 +82,29 @@ func (c *cache) run() {
 		case data := <-c.timeWheel.C: //超时队列
 			switch v := data.(type) {
 			case KVItem:
+				c.kv_mu.Lock()
 				if i, b := c.kvDelete(v.Key); b {
 					if v.CallBack {
 						c.deleteCallBack(i.Object)
 					}
 				}
+				c.kv_mu.Unlock()
 			case HASHItem:
+				c.hash_mu.Lock()
 				if i, b := c.hashDelete(v.Key); b {
 					if v.CallBack {
 						c.deleteCallBack(i.Object)
 					}
 				}
+				c.hash_mu.Unlock()
 			case Set:
-				if i, b := c.setDelete(v.Key, v.MemberKey); b {
+				c.set_mu.Lock()
+				if i, b := c.setDelete(v.Key, v.Member); b {
 					if v.CallBack {
 						c.deleteCallBack(i)
 					}
 				}
+				c.set_mu.Unlock()
 			}
 		}
 	}
@@ -452,18 +459,19 @@ func (c *cache) SAdd(key string, d time.Duration, callBack bool, members ...inte
 		for _, member := range members {
 			if val, ok := setItem.Object[member]; ok {
 				if val.Expiration > 0 {
-					c.timeWheel.RemoveTimer(val.Key)
+					c.timeWheel.RemoveTimer(val.timeWheelKey)
 				}
 			}
-			snowKey := c.snowflake.Generate().String()
+			timeWheelKey := c.snowflake.Generate().String()
 			item := Set{
-				Key:        key,
-				MemberKey:  snowKey,
-				Expiration: endTime,
-				CallBack:   callBack,
+				Key:          key,
+				timeWheelKey: timeWheelKey,
+				Member:       member,
+				Expiration:   endTime,
+				CallBack:     callBack,
 			}
 			setItem.Object[member] = item
-			c.timeWheel.AddTimer(d, snowKey, item)
+			c.timeWheel.AddTimer(d, timeWheelKey, item)
 		}
 		c.set_mu.Unlock()
 		return
@@ -471,21 +479,22 @@ func (c *cache) SAdd(key string, d time.Duration, callBack bool, members ...inte
 	c.set_mu.Lock()
 	object := map[interface{}]Set{}
 	for _, member := range members {
-		snowKey := c.snowflake.Generate().String()
+		timeWheelKey := c.snowflake.Generate().String()
 		item := Set{
-			Key:        key,
-			MemberKey:  snowKey,
-			Expiration: endTime,
-			CallBack:   callBack,
+			Key:          key,
+			timeWheelKey: timeWheelKey,
+			Member:       member,
+			Expiration:   endTime,
+			CallBack:     callBack,
 		}
 		object[member] = item
-		c.timeWheel.AddTimer(d, snowKey, item)
+		c.timeWheel.AddTimer(d, timeWheelKey, item)
 	}
 	c.setItems[key] = SetItem{Object: object}
 	c.set_mu.Unlock()
 }
 
-func (c *cache) setDelete(key, memberKey string) (Set, bool) {
+func (c *cache) setDelete(key string, memberKey interface{}) (Set, bool) {
 	if v, ok := c.setItems[key]; ok {
 		if set, ok := v.Object[memberKey]; ok {
 			delete(v.Object, memberKey)
@@ -533,7 +542,7 @@ func (c *cache) SMembers(key string) []interface{} {
 	c.set_mu.RLock()
 	defer c.set_mu.RUnlock()
 	setItem, ok := c.setItems[key]
-	members := make([]interface{}, len(setItem.Object))
+	members := make([]interface{}, 0, len(setItem.Object))
 	if !ok {
 		return members
 	}
