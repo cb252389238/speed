@@ -74,9 +74,12 @@ func TestSpeedSet(t *testing.T) {
 		return
 	}
 	c.BindDeleteCallBackFunc(func(v interface{}) {
-		fmt.Println("触发回调函数")
+		fmt.Println("触发回调函数", v)
 	})
-	c.SAdd("1070", time.Second*2, true, 1001, 1002, 1003)
+	c.SAdd("1070", time.Second*1, true, 1001, 1002, 1003)
+	c.SAdd("1070", time.Second*10, true, 1001)
+	time.Sleep(time.Second * 5)
+	fmt.Println(c.SMembers("1070"))
 	//fmt.Println(c.SISMembers("1070", 1001))
 	//fmt.Println(c.SISMembers("1070", 1005))
 	//fmt.Println(c.SCard("1070"))

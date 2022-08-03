@@ -101,7 +101,7 @@ func (c *cache) run() {
 				c.set_mu.Lock()
 				if i, b := c.setDelete(v.Key, v.Member); b {
 					if v.CallBack {
-						c.deleteCallBack(i)
+						c.deleteCallBack(i.Member)
 					}
 				}
 				c.set_mu.Unlock()
@@ -216,10 +216,10 @@ func (c *cache) kvDelete(k string) (KVItem, bool) {
 }
 
 //获取k-v所有值
-func (c *cache) Items() map[string]KVItem {
+func (c *cache) Items() map[string]interface{} {
 	c.kv_mu.RLock()
 	defer c.kv_mu.RUnlock()
-	m := make(map[string]KVItem, len(c.kvItems))
+	m := make(map[string]interface{}, len(c.kvItems))
 	now := time.Now().Unix()
 	for k, v := range c.kvItems {
 		if now > v.Expiration {
