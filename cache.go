@@ -412,7 +412,7 @@ func (c *cache) HKeys(key string) []string {
 	c.hash_mu.RLock()
 	defer c.hash_mu.RUnlock()
 	hash, ok := c.hashItems[key]
-	res := make([]string, len(hash.Object))
+	res := make([]string, 0, len(hash.Object))
 	if !ok {
 		return res
 	}
@@ -426,7 +426,7 @@ func (c *cache) HVAls(key string) []interface{} {
 	c.hash_mu.RLock()
 	defer c.hash_mu.RUnlock()
 	hash, ok := c.hashItems[key]
-	res := make([]interface{}, len(hash.Object))
+	res := make([]interface{}, 0, len(hash.Object))
 	if !ok {
 		return res
 	}
