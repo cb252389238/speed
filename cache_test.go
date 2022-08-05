@@ -94,6 +94,31 @@ func TestSpeedSet(t *testing.T) {
 	fmt.Println(c.SMembers("1070"))
 }
 
+func TestSpeedSetRem(t *testing.T) {
+	cache, err := New()
+	if err != nil {
+		fmt.Println("实例化缓存出错", err)
+		return
+	}
+	cache.BindDeleteCallBackFunc(func(key string, val interface{}) {
+		fmt.Printf("回调函数 key:%s,val:%v\r\n", key, val)
+	})
+	cache.Set("name", "城邦", time.Second*5, true)
+	if get, b := cache.Get("name"); b {
+		fmt.Println("val:", get)
+	}
+	cache.SAdd("members", time.Second*10, false, 1001)
+	cache.SAdd("members", time.Second*11, true, 1002)
+	cache.SAdd("members", time.Second*12, true, 1003)
+	cache.SAdd("members", time.Second*13, true, 1004)
+	cache.SAdd("members", time.Second*14, true, 1005)
+	fmt.Println(cache.SMembers("members"))
+	fmt.Println(cache.SRem("members", 1001))
+	fmt.Println(cache.SRem("members", 1002))
+	fmt.Println(cache.SMembers("members"))
+	select {}
+}
+
 func BenchmarkCache_SetEx(b *testing.B) {
 	c, err := New()
 	if err != nil {
