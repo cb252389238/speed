@@ -1,3 +1,3 @@
-module speed
+module github.com/cb252389238/speed
 
-go 1.18
+go 1.19
