@@ -180,7 +180,7 @@ func (c *cache) Get(k string) (interface{}, bool) {
 	return item.Object, true
 }
 
-//获取k-v 过期时间
+// 获取k-v 过期时间
 func (c *cache) GetEx(k string) (interface{}, time.Time, bool) {
 	c.kv_mu.RLock()
 	item, ok := c.kvItems[k]
@@ -194,7 +194,7 @@ func (c *cache) GetEx(k string) (interface{}, time.Time, bool) {
 	return item.Object, time.Unix(item.Expiration, 0), true
 }
 
-//k-v删除
+// k-v删除
 func (c *cache) Del(k string) {
 	c.kv_mu.Lock()
 	v, ok := c.kvDelete(k)
@@ -215,7 +215,7 @@ func (c *cache) kvDelete(k string) (KVItem, bool) {
 	return KVItem{}, false
 }
 
-//获取k-v所有值
+// 获取k-v所有值
 func (c *cache) Items() map[string]interface{} {
 	c.kv_mu.RLock()
 	defer c.kv_mu.RUnlock()
@@ -230,7 +230,7 @@ func (c *cache) Items() map[string]interface{} {
 	return m
 }
 
-//获取k-v数量
+// 获取k-v数量
 func (c *cache) ItemCount() int {
 	c.kv_mu.RLock()
 	n := len(c.kvItems)
@@ -238,7 +238,7 @@ func (c *cache) ItemCount() int {
 	return n
 }
 
-//判断k-v值是否存在
+// 判断k-v值是否存在
 func (c *cache) Exists(k string) bool {
 	c.kv_mu.RLock()
 	_, ok := c.kvItems[k]
@@ -521,20 +521,18 @@ func (c *cache) SRem(key string, members ...interface{}) int {
 	if len(members) == 0 {
 		return i
 	}
-	c.set_mu.RLock()
-	setItem, ok := c.setItems[key]
-	c.set_mu.RUnlock()
-	if !ok {
-		return i
-	}
-	c.set_mu.Lock()
 	for _, member := range members {
-		if _, ok := setItem.Object[member]; ok {
-			delete(setItem.Object, member)
-			i++
+		c.set_mu.Lock()
+		item, ok := c.setDelete(key, member)
+		c.set_mu.Unlock()
+		if item.Expiration > 0 && ok {
+			c.timeWheel.RemoveTimer(item.timeWheelKey)
 		}
+		if ok && item.CallBack && c.deleteCallBack != nil {
+			c.deleteCallBack(item.Key, item.Member)
+		}
+		i++
 	}
-	c.set_mu.Unlock()
 	return i
 }
 
